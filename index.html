@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P Shipping Platform</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/web3/1.8.2/web3.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Arial', sans-serif;
+        }
+
+        body {
+            background: #f0f2f5;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .wallet-info {
+            text-align: right;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #666;
+            font-weight: bold;
+        }
+
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s ease;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+
+        button.secondary {
+            background: #2196F3;
+        }
+
+        button.secondary:hover {
+            background: #1976D2;
+        }
+
+        .package-list {
+            margin-top: 20px;
+        }
+
+        .package-item {
+            background: #f8f9fa;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            border-left: 4px solid #4CAF50;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .status-created { background: #e3f2fd; color: #1976D2; }
+        .status-accepted { background: #fff3e0; color: #f57c00; }
+        .status-intransit { background: #e8f5e9; color: #43a047; }
+        .status-delivered { background: #e8eaf6; color: #3f51b5; }
+        .status-completed { background: #c8e6c9; color: #2e7d32; }
+        .status-cancelled { background: #ffebee; color: #c62828; }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 500px;
+        }
+
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            display: none;
+        }
+
+        .success {
+            color: #28a745;
+            background: #d4edda;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>P2P Shipping Platform</h1>
+            <div class="wallet-info">
+                <p>Account: <span id="accountAddress">Not connected</span></p>
+                <button id="connectWallet" class="secondary">Connect Wallet</button>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="card">
+                <h2>Create Shipping Request</h2>
+                <div id="createError" class="error"></div>
+                <div id="createSuccess" class="success"></div>
+                <form id="createPackageForm">
+                    <div class="form-group">
+                        <label for="pickupLocation">Pickup Location:</label>
+                        <textarea id="pickupLocation" required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="deliveryLocation">Delivery Location:</label>
+                        <textarea id="deliveryLocation" required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="reward">Reward (ETH):</label>
+                        <input type="number" id="reward" step="0.001" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="deadline">Deadline (days from now):</label>
+                        <input type="number" id="deadline" min="1" required>
+                    </div>
+                    <button type="submit">Create Shipping Request</button>
+                </form>
+            </div>
+
+            <div class="card">
+                <h2>Available Packages</h2>
+                <div class="package-list" id="packageList">
+                    <!-- Packages will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rating Modal -->
+    <div id="ratingModal" class="modal">
+        <div class="modal-content">
+            <h2>Rate Carrier</h2>
+            <div class="form-group">
+                <label for="rating">Rating (1-5):</label>
+                <input type="number" id="rating" min="1" max="5" required>
+            </div>
+            <button onclick="submitRating()">Submit Rating</button>
+            <button onclick="closeRatingModal()" class="secondary">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        window.addEventListener('load', async () => {
+            // Contract ABI - Replace with your contract's ABI
+            const contractABI = [
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_packageId",
+				"type": "uint256"
+			}
+		],
+		"name": "acceptPackage",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_packageId",
+				"type": "uint256"
+			}
+		],
+		"name": "cancelPackage",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_packageId",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "_rating",
+				"type": "uint256"
+			}
+		],
+		"name": "completeDelivery",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_packageId",
+				"type": "uint256"
+			}
+		],
+		"name": "confirmDelivery",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "_pickupLocation",
+				"type": "string"
+			},
+			{
+				"internalType": "string",
+				"name": "_deliveryLocation",
+				"type": "string"
+			},
+			{
+				"internalType": "uint256",
+				"name": "_deadline",
+				"type": "uint256"
+			}
+		],
+		"name": "createPackage",
+		"outputs": [],
+		"stateMutability": "payable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "initialOwner",
+				"type": "address"
+			}
+		],
+		"stateMutability": "nonpayable",
+		"type": "constructor"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "owner",
+				"type": "address"
+			}
+		],
+		"name": "OwnableInvalidOwner",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "account",
+				"type": "address"
+			}
+		],
+		"name": "OwnableUnauthorizedAccount",
+		"type": "error"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "carrier",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "rating",
+				"type": "uint256"
+			}
+		],
+		"name": "CarrierRated",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "carrier",
+				"type": "address"
+			}
+		],
+		"name": "CarrierRegistered",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "uint256",
+				"name": "packageId",
+				"type": "uint256"
+			}
+		],
+		"name": "DisputeRaised",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "uint256",
+				"name": "packageId",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "address",
+				"name": "winner",
+				"type": "address"
+			}
+		],
+		"name": "DisputeResolved",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "previousOwner",
+				"type": "address"
+			},
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "newOwner",
+				"type": "address"
+			}
+		],
+		"name": "OwnershipTransferred",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "uint256",
+				"name": "packageId",
+				"type": "uint256"
+			},
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "carrier",
+				"type": "address"
+			}
+		],
+		"name": "PackageAccepted",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "uint256",
+				"name": "packageId",
+				"type": "uint256"
+			}
+		],
+		"name": "PackageCancelled",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "uint256",
+				"name": "packageId",
+				"type": "uint256"
+			}
+		],
+		"name": "PackageCompleted",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "uint256",
+				"name": "packageId",
+				"type": "uint256"
+			},
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "sender",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "string",
+				"name": "pickupLocation",
+				"type": "string"
+			},
+			{
+				"indexed": false,
+				"internalType": "string",
+				"name": "deliveryLocation",
+				"type": "string"
+			}
+		],
+		"name": "PackageCreated",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "uint256",
+				"name": "packageId",
+				"type": "uint256"
+			}
+		],
+		"name": "PackageDelivered",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "uint256",
+				"name": "packageId",
+				"type": "uint256"
+			}
+		],
+		"name": "PackageInTransit",
+		"type": "event"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_packageId",
+				"type": "uint256"
+			}
+		],
+		"name": "raiseDispute",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "registerCarrier",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "renounceOwnership",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_packageId",
+				"type": "uint256"
+			},
+			{
+				"internalType": "address",
+				"name": "_winner",
+				"type": "address"
+			}
+		],
+		"name": "resolveDispute",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_newFee",
+				"type": "uint256"
+			}
+		],
+		"name": "setPlatformFee",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_packageId",
+				"type": "uint256"
+			}
+		],
+		"name": "startDelivery",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "newOwner",
+				"type": "address"
+			}
+		],
+		"name": "transferOwnership",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"name": "carriers",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "isRegistered",
+				"type": "bool"
+			},
+			{
+				"internalType": "uint256",
+				"name": "successfulDeliveries",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "rating",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "totalRatings",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "_carrier",
+				"type": "address"
+			}
+		],
+		"name": "getCarrier",
+		"outputs": [
+			{
+				"components": [
+					{
+						"internalType": "bool",
+						"name": "isRegistered",
+						"type": "bool"
+					},
+					{
+						"internalType": "uint256",
+						"name": "successfulDeliveries",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "rating",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "totalRatings",
+						"type": "uint256"
+					}
+				],
+				"internalType": "struct P2PShipping.Carrier",
+				"name": "",
+				"type": "tuple"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_packageId",
+				"type": "uint256"
+			}
+		],
+		"name": "getPackage",
+		"outputs": [
+			{
+				"components": [
+					{
+						"internalType": "address",
+						"name": "sender",
+						"type": "address"
+					},
+					{
+						"internalType": "address",
+						"name": "carrier",
+						"type": "address"
+					},
+					{
+						"internalType": "string",
+						"name": "pickupLocation",
+						"type": "string"
+					},
+					{
+						"internalType": "string",
+						"name": "deliveryLocation",
+						"type": "string"
+					},
+					{
+						"internalType": "uint256",
+						"name": "reward",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "deposit",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "deadline",
+						"type": "uint256"
+					},
+					{
+						"internalType": "enum P2PShipping.PackageStatus",
+						"name": "status",
+						"type": "uint8"
+					},
+					{
+						"internalType": "bool",
+						"name": "isDisputed",
+						"type": "bool"
+					}
+				],
+				"internalType": "struct P2PShipping.Package",
+				"name": "",
+				"type": "tuple"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "owner",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "packageCount",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"name": "packages",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "sender",
+				"type": "address"
+			},
+			{
+				"internalType": "address",
+				"name": "carrier",
+				"type": "address"
+			},
+			{
+				"internalType": "string",
+				"name": "pickupLocation",
+				"type": "string"
+			},
+			{
+				"internalType": "string",
+				"name": "deliveryLocation",
+				"type": "string"
+			},
+			{
+				"internalType": "uint256",
+				"name": "reward",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "deposit",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "deadline",
+				"type": "uint256"
+			},
+			{
+				"internalType": "enum P2PShipping.PackageStatus",
+				"name": "status",
+				"type": "uint8"
+			},
+			{
+				"internalType": "bool",
+				"name": "isDisputed",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "platformFee",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	}
+];
+            const contractAddress = "0x70ab5332DeFf5Ce4261CFE45BD10EefBA39D5dbb";
+
+            let web3;
+            let contract;
+            let userAccount;
+            let selectedPackageId;
+
+            async function init() {
+                if (typeof window.ethereum !== 'undefined') {
+                    web3 = new Web3(window.ethereum);
+                    contract = new web3.eth.Contract(contractABI, contractAddress);
+                    
+                    document.getElementById('connectWallet').addEventListener('click', connectWallet);
+                    document.getElementById('createPackageForm').addEventListener('submit', createPackage);
+                    
+                    // Try to connect if already authorized
+                    try {
+                        await connectWallet();
+                    } catch (error) {
+                        console.error("Auto connect failed:", error);
+                    }
+                } else {
+                    showError("Please install MetaMask!");
+                }
+            }
+
+            async function connectWallet() {
+                try {
+                    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                    userAccount = accounts[0];
+                    document.getElementById('accountAddress').textContent = userAccount;
+                    document.getElementById('connectWallet').style.display = 'none';
+                    
+                    loadPackages();
+                    setupEventListeners();
+                } catch (error) {
+                    console.error("Error connecting wallet:", error);
+                    showError("Failed to connect wallet");
+                }
+            }
+
+            async function createPackage(event) {
+                event.preventDefault();
+                
+                const pickupLocation = document.getElementById('pickupLocation').value;
+                const deliveryLocation = document.getElementById('deliveryLocation').value;
+                const reward = document.getElementById('reward').value;
+                const daysFromNow = document.getElementById('deadline').value;
+                
+                try {
+                    const deadline = Math.floor(Date.now() / 1000) + (daysFromNow * 24 * 60 * 60);
+                    const weiValue = web3.utils.toWei(reward, 'ether');
+                    
+                    await contract.methods.createPackage(pickupLocation, deliveryLocation, deadline)
+                        .send({ from: userAccount, value: weiValue });
+                    
+                    showSuccess("Package created successfully!");
+                    event.target.reset();
+                    loadPackages();
+                } catch (error) {
+                    console.error("Error creating package:", error);
+                    showError("Failed to create package");
+                }
+            }
+
+            async function loadPackages() {
+                try {
+                    const packageCount = await contract.methods.packageCount().call();
+                    const packageList = document.getElementById('packageList');
+                    packageList.innerHTML = '';
+                    
+                    for (let i = 0; i < packageCount; i++) {
+                        const package = await contract.methods.getPackage(i).call();
+                        if (package.status !== '5') { // Not cancelled
+                            const packageElement = createPackageElement(i, package);
+                            packageList.appendChild(packageElement);
+                        }
+                    }
+                } catch (error) {
+                    console.error("Error loading packages:", error);
+                    showError("Failed to load packages");
+                }
+            }
+
+            function createPackageElement(id, package) {
+                const div = document.createElement('div');
+                div.className = 'package-item';
+                
+                const statusMap = ['Created', 'Accepted', 'InTransit', 'Delivered', 'Completed', 'Cancelled'];
+                const status = statusMap[package.status];
+                
+                div.innerHTML = `
+                    <h3>Package #${id}</h3>
+                    <p><strong>Pickup:</strong> ${package.pickupLocation}</p>
+                    <p><strong>Delivery:</strong> ${package.deliveryLocation}</p>
+                    <p><strong>Reward:</strong> ${web3.utils.fromWei(package.reward, 'ether')} ETH</p>
+                    <p><strong>Deadline:</strong> ${new Date(package.deadline * 1000).toLocaleString()}</p>
+                    <span class="status status-${status.toLowerCase()}">${status}</span>
+                    ${getActionButton(id, package)}
+                `;
+                
+                return div;
+            }
+
+            function getActionButton(id, package) {
+                if (package.sender === userAccount) {
+                    if (package.status === '3') { // Delivered
+                        return `<button onclick="openRatingModal(${id})" class="secondary">Complete & Rate</button>`;
+                    }
+                } else if (package.carrier === userAccount) {
+                    if (package.status === '1') { // Accepted
+                        return `<button onclick="startDelivery(${id})" class="secondary">Start Delivery</button>`;
+                    } else if (package.status === '2') { // InTransit
+                        return `<button onclick="confirmDelivery(${id})" class="secondary">Confirm Delivery</button>`;
+                    }
+                } else if (package.status === '0') { // Created
+                    return `<button onclick="acceptPackage(${id})" class="secondary">Accept Package</button>`;
+                }
+                return '';
+            }
+
+            async function acceptPackage(packageId) {
+                try {
+                    await contract.methods.acceptPackage(packageId).send({ from: userAccount });
+                    showSuccess("Package accepted successfully!");
+                    loadPackages();
+                } catch (error) {
+                    console.error("Error accepting package:", error);
+                    showError("Failed to accept package");
+                }
+            }
+
+            async function startDelivery(packageId) {
+                try {
+                    await contract.methods.startDelivery(packageId).send({ from: userAccount });
+                    showSuccess("Delivery started successfully!");
+                    loadPackages();
+                } catch (error) {
+                    console.error("Error starting delivery:", error);
+                    showError("Failed to start delivery");
+                }
+            }
+
+            async function confirmDelivery(packageId) {
+                try {
+                    await contract.methods.confirmDelivery(packageId).send({ from: userAccount });
+                    showSuccess("Delivery confirmed successfully!");
+                    loadPackages();
+                } catch (error) {
+                    console.error("Error confirming delivery:", error);
+                    showError("Failed to confirm delivery");
+                }
+            }
+
+            function openRatingModal(packageId) {
+                selectedPackageId = packageId;
+                document.getElementById('ratingModal').style.display = 'flex';
+            }
+
+            function closeRatingModal() {
+                document.getElementById('ratingModal').style.display = 'none';
+            }
+
+            async function submitRating() {
+                const rating = document.getElementById('rating').value;
+                try {
+                    await contract.methods.completeDelivery(selectedPackageId, rating)
+                        .send({ from: userAccount });
+                    
+                    showSuccess("Delivery completed and rated successfully!");
+                    closeRatingModal();
+                    loadPackages();
+                } catch (error) {
+                    console.error("Error completing delivery:", error);
+                    showError("Failed to complete delivery");
+                }
+            }
+
+            function showError(message) {
+                const errorDiv = document.getElementById('createError');
+                errorDiv.textContent = message;
+                errorDiv.style.display = 'block';
+                setTimeout(() => errorDiv.style.display = 'none', 5000);
+            }
+
+            function showSuccess(message) {
+                const successDiv = document.getElementById('createSuccess');
+                successDiv.textContent = message;
+                successDiv.style.display = 'block';
+                setTimeout(() => successDiv.style.display = 'none', 5000);
+            }
+
+            function setupEventListeners() {
+                window.ethereum.on('accountsChanged', function (accounts) {
+                    userAccount = accounts[0];
+                    document.getElementById('accountAddress').textContent = userAccount;
+                    loadPackages();
+                });
+            }
+
+            // Initialize the application
+            init();
+        });
+    </script>
+</body>
+</html>
